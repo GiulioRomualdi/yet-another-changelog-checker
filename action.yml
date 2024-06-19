@@ -1,0 +1,48 @@
+name: 'Check Changelog'
+description: 'Check if the changelog was modified in a pull request'
+branding:
+  icon: 'check-circle'
+  color: 'orange'
+inputs:
+  changelog:
+    description: "The path to the changelog file to check"
+    required: false
+    default: 'CHANGELOG.md'
+  disable-label:
+    description: "The label to disable the changelog check"
+    required: false
+    default: '[disable changelog ci]'
+  should-add-comment:
+    description: "Whether to add a comment if the changelog was not modified"
+    required: false
+    default: 'true'
+runs:
+  using: "composite"
+  steps:
+  - name: Check out repository code
+    uses: actions/checkout@v4
+    with:
+      fetch-depth: 0
+  
+  # Check if the changelog was modified in the pull request
+  - name: Check for changes in changelog
+    env:
+      BASE_REF: ${{ github.event.pull_request.base.ref }}
+      NO_CHANGELOG_LABEL: ${{ contains(github.event.pull_request.labels.*.name, ${{ inputs.disable-label }}) }}
+    run: ${{ github.action_path }}/script/check-changelog.sh "${{ inputs.changelog }}"
+    shell: bash
+
+  # Add a comment if the changelog was not modified. This is useful to remind contributors to update the changelog.
+  # The comment is only added if the previous step failed (i.e. the changelog was not modified) and if should-add-comment is set to true.
+  - name: Add a comment if the changelog was not modified
+    if: ${{ failure() && inputs.should-add-comment == 'true' }}
+    uses: actions/github-script@v4
+    with:
+      github-token: ${{ secrets.GITHUB_TOKEN }}
+      script: |
+        github.issues.createComment({
+          issue_number: context.issue.number,
+          owner: context.repo.owner,
+          repo: context.repo.repo,
+          body: 'Please remember to update the CHANGELOG file.'
+        })
